@@ -2,51 +2,46 @@
 
 This tool talkes files from a directory and moves them into MemSQL pipelines.
 
+## Inbound Direcory
 
-[glenn@localhost file_dispatcher]$
-[glenn@localhost file_dispatcher]$ ls -l /var/lib/memsql/pipelines/inbound
+This directory is where the files land within your environment.  These files should be static when placed in this directory as the file_dispatcher doesn't know how to address files that are currently being modified.
+
+```
+$ ls -l /var/lib/memsql/pipelines/inbound
 total 12
 -rwxr-xr-x 1 root root 38 Dec 12 15:18 f1.csv
 -rwxr-xr-x 1 root root 47 Dec 12 15:18 f2.csv
 -rwxr-xr-x 1 root root 12 Dec 12 15:18 f3.csv
-[glenn@localhost file_dispatcher]$ memsql
-Welcome to the MySQL monitor.  Commands end with ; or \g.
-Your MySQL connection id is 90
-Server version: 5.5.8 MemSQL source distribution (compatible; MySQL Enterprise & MySQL Commercial)
+```
 
-Copyright (c) 2000, 2016, Oracle and/or its affiliates. All rights reserved.
+## MemSQL filesystem (FS) Pipelines
 
-Oracle is a registered trademark of Oracle Corporation and/or its
-affiliates. Other names may be trademarks of their respective
-owners.
+A MemSQL filesystem pipeline was created to map to this stream of CSV files.
 
-Type 'help;' or '\h' for help. Type '\c' to clear the current input statement.
+```
+memsql> 
+  CREATE PIPELINE `gpipe`
+  AS LOAD DATA FS '/var/lib/memsql/pipelines/gpipe/*'
+  BATCH_INTERVAL 0
+  INTO TABLE `glenntab`
+  FIELDS TERMINATED BY ',' ENCLOSED BY '' ESCAPED BY '\\'
+  LINES TERMINATED BY '\n' STARTING BY ''
+  (`glenntab`.`id`,`glenntab`.`name`);
+```
 
-memsql> use ssb;
-Reading table information for completion of table and column names
-You can turn off this feature to get a quicker startup with -A
 
-Database changed
-memsql> show create pipeline gpipe;
-+----------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
-| Pipeline | Create Pipeline                                                                                                                                                                                                                                        |
-+----------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
-| gpipe    | CREATE PIPELINE `gpipe`
-AS LOAD DATA FS '/var/lib/memsql/pipelines/gpipe/*'
-BATCH_INTERVAL 0
-INTO TABLE `glenntab`
-FIELDS TERMINATED BY ',' ENCLOSED BY '' ESCAPED BY '\\'
-LINES TERMINATED BY '\n' STARTING BY ''
-(`glenntab`.`id`,`glenntab`.`name`) |
-+----------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
-1 row in set (0.01 sec)
-
-memsql> quit
-Bye
-[glenn@localhost file_dispatcher]$ ls -l /var/lib/memsql/pipelines/gpipe/
+For this example, the MemSQL pipeline points to the `/var/lib/memsql/pipelines/gpipe/` directory.  There are no files currently in this direcory before `file_dispatcher` is run.
+```
+$ ls -l /var/lib/memsql/pipelines/gpipe/
 total 0
+```
 
-[glenn@localhost file_dispatcher]$ python ./file_dispatcher.py -h
+## file_dispatcher syntax
+
+The `file_dispatcher.py` tool is a python script which reads the pipeline definition from MemSQL and uses various parameters to move files from the inbound `SOURCE_DIR` to the directory identified by the MemSQL pipeline name `PIPELINE_NAME`.  File dispatcher also check to see which files in the pipeline have completed and moves those file into the `DONE_DIR` direcory.  If files are successful, the name will remain the same.  If they failed for any reason, a `.fail` postfix will be added to the filename.
+
+```
+$ python ./file_dispatcher.py -h
 usage: file_dispatcher.py [-h] [-v] [-o] [-H HOSTNAME] [-n PORTNUM]
                           [-D DATABASE_NAME] [-s SOURCE_DIR]
                           [-p PIPELINE_NAME] [-d DONE_DIR]
@@ -71,7 +66,14 @@ optional arguments:
   -d DONE_DIR, --done_dir DONE_DIR
                         directory for pipeline files that have finished
                         loading
-[glenn@localhost file_dispatcher]$ sudo python ./file_dispatcher.py -H localhost -n 3306 -D ssb -s /var/lib/memsql/pipelines/inbound -p gpipe -d /var/lib/memsql/pipelines/done
+ ```
+
+## file_dispatcher runtime example
+
+The following example will move files from the `/var/lib/memsql/pipelines/inbound` directory into the MemSQL `gpipe` pipeline within the `ssb` database on the `localhost`.
+
+```
+$ sudo python ./file_dispatcher.py -H localhost -n 3306 -D ssb -s /var/lib/memsql/pipelines/inbound -p gpipe -d /var/lib/memsql/pipelines/done
 2017-12-12 15:19:37,202 INFO In the beginning...
 2017-12-12 15:19:37,202 INFO Hostname : localhost
 2017-12-12 15:19:37,202 INFO Port number : 3306
@@ -91,18 +93,24 @@ optional arguments:
 2017-12-12 15:19:37,208 INFO Files in Pipeline Directory: f2.csv
 2017-12-12 15:19:37,209 INFO Full filename in Pipeline Directory: /var/lib/memsql/pipelines/gpipe/f3.csv
 2017-12-12 15:19:37,209 INFO Files in Pipeline Directory: f3.csv
+```
 
-[glenn@localhost file_dispatcher]$ ls -l /var/lib/memsql/pipelines/gpipe/
+Looking at the `gpipe` directory we now see the files within MemSQL.
+
+```
+$ ls -l /var/lib/memsql/pipelines/gpipe/
 total 12
 -rwxr-xr-x 1 root root 38 Dec 12 15:18 f1.csv
 -rwxr-xr-x 1 root root 47 Dec 12 15:18 f2.csv
 -rwxr-xr-x 1 root root 12 Dec 12 15:18 f3.csv
 
-[glenn@localhost file_dispatcher]$ ls -l /var/lib/memsql/pipelines/done
+$ ls -l /var/lib/memsql/pipelines/done
 total 0
+```
+Running the file_dispatcher.py again, we will see the completed files moved from the pipeline directory to the done directory.
 
-
-[glenn@localhost file_dispatcher]$ sudo python ./file_dispatcher.py -H localhost -n 3306 -D ssb -s /var/lib/memsql/pipelines/inbound -p gpipe -d /var/lib/memsql/pipelines/done
+```
+$ sudo python ./file_dispatcher.py -H localhost -n 3306 -D ssb -s /var/lib/memsql/pipelines/inbound -p gpipe -d /var/lib/memsql/pipelines/done
 2017-12-12 15:19:57,506 INFO In the beginning...
 2017-12-12 15:19:57,506 INFO Hostname : localhost
 2017-12-12 15:19:57,506 INFO Port number : 3306
@@ -126,16 +134,20 @@ total 0
 2017-12-12 15:19:57,519 INFO File /var/lib/memsql/pipelines/gpipe/f3.csv of Pipeline gpipe has FAILED loading 4 times!!
 2017-12-12 15:19:57,519 INFO Moving file /var/lib/memsql/pipelines/gpipe/f3.csv to /var/lib/memsql/pipelines/done/f3.csv.fail
 
-[glenn@localhost file_dispatcher]$ ls -l /var/lib/memsql/pipelines/gpipe/
+]$ ls -l /var/lib/memsql/pipelines/gpipe/
 total 0
 
-[glenn@localhost file_dispatcher]$ ls -l /var/lib/memsql/pipelines/done/
+$ ls -l /var/lib/memsql/pipelines/done/
 total 12
 -rwxr-xr-x 1 root root 38 Dec 12 15:18 f1.csv
 -rwxr-xr-x 1 root root 47 Dec 12 15:18 f2.csv
 -rwxr-xr-x 1 root root 12 Dec 12 15:18 f3.csv.fail
+```
 
-[glenn@localhost file_dispatcher]$ head -2 /var/lib/memsql/pipelines/done/*
+Notice that there was one file that falied to load `f3.csv.fail`.
+
+```
+$ head -2 /var/lib/memsql/pipelines/done/*
 ==> /var/lib/memsql/pipelines/done/f1.csv <==
 1,glenn
 2,ruby
@@ -147,8 +159,11 @@ total 12
 ==> /var/lib/memsql/pipelines/done/f3.csv.fail <==
 jflksd
 jlkj
+```
 
+The `pipelines_errors` table within the `information_schema` shows details regarding the load failures.
 
+```
 memsql> select database_name, pipeline_name, error_message
     -> from pipelines_errors
     -> where database_name='ssb' and pipeline_name='gpipe' and batch_source_partition_id like '%f3.csv';
@@ -161,7 +176,11 @@ memsql> select database_name, pipeline_name, error_message
 | ssb           | gpipe         | Row 1 doesn't contain data for all columns |
 +---------------+---------------+--------------------------------------------+
 4 rows in set (1.18 sec)
+```
 
+We notice that this file was tried 4 times.  Once the the number of attempts defined by the `PIPELINES_MAX_RETRIES_PER_BATCH_PARTITION` have been reached, MemSQL pipelines no longer attemp to load the failed files.
+
+```
 memsql> select @@PIPELINES_MAX_RETRIES_PER_BATCH_PARTITION;
 +---------------------------------------------+
 | @@PIPELINES_MAX_RETRIES_PER_BATCH_PARTITION |
@@ -169,13 +188,29 @@ memsql> select @@PIPELINES_MAX_RETRIES_PER_BATCH_PARTITION;
 |                                           4 |
 +---------------------------------------------+
 1 row in set (0.31 sec)
+```
+
+Finally, by default, the cluster variable `pipelines_stop_on_error` will stop a pipeline if an error occurs.  This can be bypassed if you set this variable to true.  The example below sets this variable to false.
+
+```
+memsql> select @@pipelines_stop_on_error;
+
++---------------------------+
+| @@pipelines_stop_on_error |
++---------------------------+
+|                         1 |
++---------------------------+
+1 row in set (0.07 sec)
+
+$ memsql-ops memsql-update-config --set-global --key pipelines_stop_on_error --value false --all
 
 memsql> select @@pipelines_stop_on_error;
 
-## DON"T STOP ON ERROR
 +---------------------------+
 | @@pipelines_stop_on_error |
 +---------------------------+
 |                         0 |
 +---------------------------+
-1 row in set (0.07 sec)
+1 row in set (0.08 sec)
+```
+
