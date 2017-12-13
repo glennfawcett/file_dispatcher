@@ -1,5 +1,8 @@
 # file_dispatcher
 
+This tool talkes files from a directory and moves them into MemSQL pipelines.
+
+
 [glenn@localhost file_dispatcher]$
 [glenn@localhost file_dispatcher]$ ls -l /var/lib/memsql/pipelines/inbound
 total 12
